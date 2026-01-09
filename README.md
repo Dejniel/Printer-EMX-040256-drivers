@@ -6,6 +6,10 @@ Supports GUI mode and a CLI "fire-and-forget" mode. Supports all [Bluetooth prin
 
 ![TiMini Print LOGO EMX-040256 Printer Psi Patrol](EMX_040256.jpg)
 
+##We need you!
+- This is open source. Your small monthly support on [Buy Me a Coffee](https://buymeacoffee.com/dejniel) can make a real difference and keep the project alive—even a one-time donation helps. Building and maintaining a project like this takes a lot of time; if you find it useful, please consider supporting it so I can keep improving it: [support the project](https://buymeacoffee.com/dejniel).
+- If you’re a developer, contributions and bug reports are always welcome—please jump in.
+
 ## Requirements
 - Python 3.8+
 - pip install -r requirements.txt
