@@ -1,6 +1,6 @@
 # TiMini Print Bluetooth Printer Tool
 
-Alternative firmware/software replacing the “[Tiny Print](https://play.google.com/store/apps/details?id=com.frogtosea.tinyPrint)” Bluetooth thermal printers app.
+An alternative desktop software for “[Tiny Print](https://play.google.com/store/apps/details?id=com.frogtosea.tinyPrint)”-compatible Bluetooth thermal printers.
 Enables printing images, PDFs, or plain text directly from a desktop computer.
 Supports GUI mode and a CLI "fire-and-forget" mode. Check the list of [supported Bluetooth printer models](#supported-printer-models).
 
