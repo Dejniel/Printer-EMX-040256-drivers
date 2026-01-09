@@ -1,24 +1,22 @@
 # TiMini Print Bluetooth Printer Tool
 
-Alternative firmware/software replacing the “[Tiny Print](https://play.google.com/store/apps/details?id=com.frogtosea.tinyPrint)” Bluetooth thermal
-printers app.
+Alternative firmware/software replacing the “[Tiny Print](https://play.google.com/store/apps/details?id=com.frogtosea.tinyPrint)” Bluetooth thermal printers app.
 Enables printing images, PDFs, or plain text directly from a desktop computer.
-Supports GUI mode and a CLI "fire-and-forget" mode. Supports all Bluetooth
-printer models.
+Supports GUI mode and a CLI "fire-and-forget" mode. Supports all [Bluetooth printer models](#supported-printer-models).
 
 ![TiMini Print LOGO EMX-040256 Printer Psi Patrol](EMX_040256.jpg)
 
-# Requirements
+## Requirements
 - Python 3.8+
 - pip install -r requirements.txt
 - Pair the printer in your OS Bluetooth settings and accept the trust/pairing
   prompt if shown. The app expects the device to be paired already.
 
-# Quick start (GUI)
+## Quick start (GUI)
 - Run with no arguments:
   python3 timiniprint.py
 
-# Quick start (CLI)
+## Quick start (CLI)
 - Print to the first supported Bluetooth printer:
   python3 timiniprint.py /path/to/file.pdf
 
@@ -34,28 +32,24 @@ printer models.
 - Scan for supported printers:
   python3 timiniprint.py --scan
 
-# Supported formats
+## Supported formats
 - Images: .png .jpg .jpeg .gif .bmp
 - PDF: prints all pages
 - Text: .txt (monospace, bold if available)
 
-# Notes
+## Notes
 - Any CLI option/argument disables the GUI (no arguments = GUI mode).
 - If `--bluetooth` is omitted, the first supported printer found is used.
 - For `--serial`, you can pass `--bluetooth` to select the model explicitly.
 - If no arguments are provided, a GUI opens. You can scan, connect/disconnect,
   choose a file, and print.
 
-# PDF rendering dependencies (optional)
+## PDF rendering dependencies (optional)
 - PyMuPDF: pip install pymupdf
 - pdf2image: pip install pdf2image (plus system poppler)
 - Or system pdftoppm (poppler-utils)
 
-# Legacy (SPP over /dev/rfcomm)
-The older EMX-only script is still available:
-```python3 print_emx_040256.py /path/to/file.png```
-
-# Supported printer models
+## Supported printer models
 A200, A33, A41II, A41III, A42II, A43, A4300, CMT-0510, CP01, D1, D100, DL GE225, DL X2, DL X2 Pro,
 DL X7, DL X7 Pro, DT1-0, DTR-R0, DY03, DY49, EMX-040256, FC02, GB02SH, GB03PH, GB03PL, GB03SH,
 GB03SL, GL-VS9, GT09, GT10, GV-MA211, GW08, GW09, HD1, HT0125, IM.04, IprintIt Printer,
