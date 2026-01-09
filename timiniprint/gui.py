@@ -7,7 +7,8 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 
 from .ble import SppBackend
-from .models import PrinterModel, PrinterModelRegistry
+from .device_utils import filter_printer_devices, resolve_model
+from .models import PrinterModelRegistry
 from .print_job import PrintJobBuilder, PrintSettings
 
 
@@ -110,8 +111,12 @@ class TiMiniPrintGUI(tk.Tk):
                 self.device_map = {self._device_label(d): d for d in payload}
                 values = list(self.device_map.keys())
                 self.device_combo["values"] = values
+                current = self.device_var.get()
                 if values:
-                    self.device_var.set(values[0])
+                    if current in self.device_map:
+                        self.device_var.set(current)
+                    elif not self.connected_model:
+                        self.device_var.set(values[0])
                 else:
                     self.device_var.set("")
             elif action == "connected":
@@ -140,20 +145,13 @@ class TiMiniPrintGUI(tk.Tk):
         def done(fut):
             try:
                 devices = fut.result()
-                filtered = self._filter_printer_devices(devices)
+                filtered = filter_printer_devices(self.registry, devices)
                 self.queue.put(("devices", filtered))
                 self._queue_status(f"Found {len(filtered)} devices")
             except Exception as exc:
                 self._queue_error(str(exc))
 
         self.ble_loop.submit(self.backend.scan(), callback=done)
-
-    def _filter_printer_devices(self, devices):
-        filtered = []
-        for device in devices:
-            if self.registry.detect_from_device_name(device.name or ""):
-                filtered.append(device)
-        return filtered
 
     def connect(self) -> None:
         label = self.device_var.get()
@@ -168,6 +166,7 @@ class TiMiniPrintGUI(tk.Tk):
                 fut.result()
                 self._queue_status("Connected")
                 self.queue.put(("connected", device))
+                self.device_var.set(self._device_label(device))
             except Exception as exc:
                 self._queue_error(str(exc))
 
@@ -234,7 +233,7 @@ class TiMiniPrintGUI(tk.Tk):
         self.connected_model = None
         if connected and device:
             try:
-                model = self._resolve_model(device)
+                model = resolve_model(self.registry, device.name or "")
             except Exception as exc:
                 self._queue_error(str(exc))
                 self.ble_loop.submit(self.backend.disconnect())
@@ -242,6 +241,8 @@ class TiMiniPrintGUI(tk.Tk):
                 return
             self.connected_model = model
             self.model_var.set(model.model_no)
+            self._set_device_combo_state(False)
+            self._set_widget_state(self.refresh_button, False)
             self._set_widget_state(self.file_entry, True)
             self._set_widget_state(self.browse_button, True)
             self._set_widget_state(self.print_button, True)
@@ -250,17 +251,13 @@ class TiMiniPrintGUI(tk.Tk):
             return
 
         self.model_var.set("")
+        self._set_device_combo_state(True)
+        self._set_widget_state(self.refresh_button, True)
         self._set_widget_state(self.file_entry, False)
         self._set_widget_state(self.browse_button, False)
         self._set_widget_state(self.print_button, False)
         self._set_widget_state(self.connect_button, True)
         self._set_widget_state(self.disconnect_button, False)
-
-    def _resolve_model(self, device) -> PrinterModel:
-        model = self.registry.detect_from_device_name(device.name or "")
-        if model:
-            return model
-        raise RuntimeError("Printer model not detected from Bluetooth name")
 
     @staticmethod
     def _set_widget_state(widget, enabled: bool) -> None:
@@ -268,3 +265,7 @@ class TiMiniPrintGUI(tk.Tk):
             widget.state(["!disabled"])
         else:
             widget.state(["disabled"])
+
+    def _set_device_combo_state(self, enabled: bool) -> None:
+        state = "readonly" if enabled else "disabled"
+        self.device_combo.configure(state=state)

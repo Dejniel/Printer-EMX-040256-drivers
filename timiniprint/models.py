@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional, List
+from typing import Dict, Iterable, Optional, List
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "printer_models.json"
 
@@ -44,14 +44,22 @@ class PrinterModel:
 
 
 class PrinterModelRegistry:
+    _cache: Dict[Path, "PrinterModelRegistry"] = {}
+
     def __init__(self, models: Iterable[PrinterModel]) -> None:
         self._models = list(models)
 
     @classmethod
     def load(cls, path: Path = DATA_PATH) -> "PrinterModelRegistry":
+        key = path.resolve()
+        cached = cls._cache.get(key)
+        if cached:
+            return cached
         raw = json.loads(path.read_text(encoding="utf-8"))
         models = [PrinterModel(**item) for item in raw]
-        return cls(models)
+        registry = cls(models)
+        cls._cache[key] = registry
+        return registry
 
     @property
     def models(self) -> List[PrinterModel]:
@@ -79,6 +87,3 @@ class PrinterModelRegistry:
                 if match is None or len(model.model_no) > len(match.model_no):
                     match = model
         return match
-
-
-DEFAULT_MODEL_NAME = "EMX-040256"

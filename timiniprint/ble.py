@@ -49,8 +49,10 @@ class SppBackend:
     def _connect_blocking(self, address: str) -> None:
         if self._connected:
             return
-        if not hasattr(socket, "AF_BLUETOOTH"):
-            raise RuntimeError("RFCOMM sockets are not supported on this system")
+        if not hasattr(socket, "AF_BLUETOOTH") or not hasattr(socket, "BTPROTO_RFCOMM"):
+            raise RuntimeError(
+                "RFCOMM sockets are not supported on this system. Use --serial or run on Linux."
+            )
         channels = _resolve_rfcomm_channels(address)
         last_error = None
         for channel in channels:
