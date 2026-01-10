@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, Optional, List
 
-DATA_PATH = Path(__file__).resolve().parent / "data" / "printer_models.json"
+DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "printer_models.json"
 
 
 @dataclass(frozen=True)

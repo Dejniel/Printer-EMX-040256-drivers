@@ -4,10 +4,10 @@ import os
 from dataclasses import dataclass
 from typing import List, Optional
 
-from .converters import Page, SUPPORTED_EXTENSIONS, load_pages
-from .models import PrinterModel
-from .protocol import build_job
-from .renderer import image_to_bw_pixels
+from ..protocol import build_job
+from ..rendering.converters import Page, PageLoader
+from ..rendering.renderer import image_to_bw_pixels
+from ..devices.models import PrinterModel
 
 DEFAULT_BLACKENING = 3
 DEFAULT_FEED_PADDING = 12
@@ -25,14 +25,20 @@ class PrintSettings:
 
 
 class PrintJobBuilder:
-    def __init__(self, model: PrinterModel, settings: Optional[PrintSettings] = None) -> None:
+    def __init__(
+        self,
+        model: PrinterModel,
+        settings: Optional[PrintSettings] = None,
+        page_loader: Optional[PageLoader] = None,
+    ) -> None:
         self.model = model
         self.settings = settings or PrintSettings()
+        self.page_loader = page_loader or PageLoader()
 
     def build_from_file(self, path: str) -> bytes:
         self._validate_input_path(path)
         width = self._normalized_width(self.model.width)
-        pages = load_pages(path, width)
+        pages = self.page_loader.load(path, width)
         data_parts: List[bytes] = []
         for page in pages:
             pixels = image_to_bw_pixels(page.image, dither=self._use_dither(page))
@@ -78,10 +84,10 @@ class PrintJobBuilder:
             return width
         return width - (width % 8)
 
-    @staticmethod
-    def _validate_input_path(path: str) -> None:
+    def _validate_input_path(self, path: str) -> None:
         ext = os.path.splitext(path)[1].lower()
-        if ext not in SUPPORTED_EXTENSIONS:
-            raise ValueError("Supported formats: " + ", ".join(sorted(SUPPORTED_EXTENSIONS)))
+        supported = self.page_loader.supported_extensions
+        if ext not in supported:
+            raise ValueError("Supported formats: " + ", ".join(sorted(supported)))
         if not os.path.isfile(path):
             raise FileNotFoundError(f"File not found: {path}")

@@ -1,7 +1,7 @@
 # TiMini Print Bluetooth Printer Tool
 
-An alternative desktop software for “[Tiny Print](https://play.google.com/store/apps/details?id=com.frogtosea.tinyPrint)”-compatible Bluetooth thermal printers
-Enables printing images, PDFs, or plain text directly from a desktop computer
+An alternative desktop software for “[Tiny Print](https://play.google.com/store/apps/details?id=com.frogtosea.tinyPrint)”-compatible Bluetooth thermal printers, often sold under names like "thermal-printer", "ESC/POS", "pos-printer", "mini printer", "cat printer", or "rabbit printer".
+It lets you print images, PDFs, or plain text from your computer
 Supports GUI mode and a CLI "fire-and-forget" mode. Check the list of [supported Bluetooth printer models](#supported-printer-models)
 
 ![TiMini Print LOGO EMX-040256 Printer Psi Patrol](EMX_040256.jpg)
@@ -51,6 +51,7 @@ Supports GUI mode and a CLI "fire-and-forget" mode. Check the list of [supported
 ## Notes
 - I test builds only on Ubuntu-like systems—if you need to run this elsewhere, please report issues or submit a fix :P
 - Windows + Python 3.13+: installing `winsdk` may require building binaries during download
+- Protocol integration guide: [docs/protocol.md](docs/protocol.md)
 
 ## PDF rendering dependencies (optional)
 - PyMuPDF: pip install pymupdf

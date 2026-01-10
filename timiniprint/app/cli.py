@@ -3,14 +3,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-import time
 
-from .ble import SppBackend
-from .device_utils import filter_printer_devices, require_model, resolve_model, resolve_printer_device
-from .models import PrinterModel, PrinterModelRegistry
-from .print_job import PrintJobBuilder, PrintSettings
-
-SERIAL_BAUD_RATE = 115200
+from ..devices import DeviceResolver, PrinterModel, PrinterModelRegistry
+from ..printing import PrintJobBuilder, PrintSettings
+from ..transport.bluetooth import SppBackend
+from ..transport.serial import SerialTransport
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,8 +34,9 @@ def list_models() -> int:
 def scan_devices() -> int:
     async def run() -> None:
         registry = PrinterModelRegistry.load()
+        resolver = DeviceResolver(registry)
         devices = await SppBackend.scan()
-        devices = filter_printer_devices(registry, devices)
+        devices = resolver.filter_printer_devices(devices)
         for device in devices:
             name = device.name or ""
             if name:
@@ -64,37 +62,13 @@ def build_print_data(model: PrinterModel, path: str) -> bytes:
     return builder.build_from_file(path)
 
 
-def write_serial_blocking(port: str, data: bytes, chunk_size: int, interval_ms: int) -> None:
-    try:
-        import serial
-    except Exception as exc:  # pragma: no cover
-        raise RuntimeError("pyserial is required. Install with: pip install -r requirements.txt") from exc
-    interval = max(0.0, interval_ms / 1000.0)
-    try:
-        with serial.Serial(port, SERIAL_BAUD_RATE, timeout=1, write_timeout=5) as ser:
-            offset = 0
-            while offset < len(data):
-                chunk = data[offset : offset + chunk_size]
-                ser.write(chunk)
-                offset += len(chunk)
-                if interval:
-                    time.sleep(interval)
-            ser.flush()
-    except Exception as exc:
-        raise RuntimeError(f"Serial connection failed: {exc}") from exc
-
-
-async def write_serial(port: str, data: bytes, chunk_size: int, interval_ms: int) -> None:
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, write_serial_blocking, port, data, chunk_size, interval_ms)
-
-
 def print_bluetooth(args: argparse.Namespace) -> int:
     registry = PrinterModelRegistry.load()
+    resolver = DeviceResolver(registry)
 
     async def run() -> None:
-        device = await resolve_printer_device(registry, args.bluetooth)
-        model = resolve_model(registry, device.name or "", args.model)
+        device = await resolver.resolve_printer_device(args.bluetooth)
+        model = resolver.resolve_model(device.name or "", args.model)
         data = build_print_data(model, args.path)
         backend = SppBackend()
         await backend.connect(device.address)
@@ -107,11 +81,13 @@ def print_bluetooth(args: argparse.Namespace) -> int:
 
 def print_serial(args: argparse.Namespace) -> int:
     registry = PrinterModelRegistry.load()
-    model = require_model(registry, args.model)
+    resolver = DeviceResolver(registry)
+    model = resolver.require_model(args.model)
     data = build_print_data(model, args.path)
 
     async def run() -> None:
-        await write_serial(args.serial, data, model.img_mtu or 180, model.interval_ms or 4)
+        transport = SerialTransport(args.serial)
+        await transport.write(data, model.img_mtu or 180, model.interval_ms or 4)
 
     asyncio.run(run())
     return 0

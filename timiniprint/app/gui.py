@@ -6,10 +6,9 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, ttk
 
-from .ble import SppBackend
-from .device_utils import filter_printer_devices, resolve_model
-from .models import PrinterModelRegistry
-from .print_job import PrintJobBuilder, PrintSettings
+from ..devices import DeviceResolver, PrinterModelRegistry
+from ..printing import PrintJobBuilder, PrintSettings
+from ..transport.bluetooth import SppBackend
 
 
 class BleLoop:
@@ -37,6 +36,7 @@ class TiMiniPrintGUI(tk.Tk):
         self.resizable(False, False)
 
         self.registry = PrinterModelRegistry.load()
+        self.resolver = DeviceResolver(self.registry)
         self.backend = SppBackend()
         self.ble_loop = BleLoop()
         self.queue: queue.Queue = queue.Queue()
@@ -145,7 +145,7 @@ class TiMiniPrintGUI(tk.Tk):
         def done(fut):
             try:
                 devices = fut.result()
-                filtered = filter_printer_devices(self.registry, devices)
+                filtered = self.resolver.filter_printer_devices(devices)
                 self.queue.put(("devices", filtered))
                 self._queue_status(f"Found {len(filtered)} devices")
             except Exception as exc:
@@ -233,7 +233,7 @@ class TiMiniPrintGUI(tk.Tk):
         self.connected_model = None
         if connected and device:
             try:
-                model = resolve_model(self.registry, device.name or "")
+                model = self.resolver.resolve_model(device.name or "")
             except Exception as exc:
                 self._queue_error(str(exc))
                 self.ble_loop.submit(self.backend.disconnect())
