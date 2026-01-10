@@ -40,7 +40,7 @@ class _BluetoothAdapter:
         return None
 
 
-class _BlueZAdapter(_BluetoothAdapter):
+class _LinuxBluetoothAdapter(_BluetoothAdapter):
     def scan_blocking(self, timeout: float) -> List[DeviceInfo]:
         devices = _scan_bluetoothctl(timeout)
         if devices:
@@ -96,7 +96,7 @@ def _get_adapter() -> _BluetoothAdapter:
         if IS_WINDOWS:
             _ADAPTER = _WindowsBluetoothAdapter()
         else:
-            _ADAPTER = _BlueZAdapter()
+            _ADAPTER = _LinuxBluetoothAdapter()
     return _ADAPTER
 
 
