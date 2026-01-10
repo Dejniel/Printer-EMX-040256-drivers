@@ -24,13 +24,7 @@ class DeviceInfo:
     address: str
 
 
-@dataclass(frozen=True)
-class WinRtServiceInfo:
-    service_id: str
-    service_name: Optional[str]
-
-
-WinRtScanResult = Tuple[List[DeviceInfo], Dict[str, WinRtServiceInfo]]
+ScanResult = Tuple[List[DeviceInfo], Dict[str, str]]
 
 
 class _BluetoothAdapter:
@@ -46,7 +40,7 @@ class _BluetoothAdapter:
         return None
 
 
-class _LinuxBluetoothAdapter(_BluetoothAdapter):
+class _BlueZAdapter(_BluetoothAdapter):
     def scan_blocking(self, timeout: float) -> List[DeviceInfo]:
         devices = _scan_bluetoothctl(timeout)
         if devices:
@@ -65,10 +59,10 @@ class _LinuxBluetoothAdapter(_BluetoothAdapter):
 
 
 class _WindowsBluetoothAdapter(_BluetoothAdapter):
+    single_channel = True
+
     def __init__(self) -> None:
-        self._use_stdlib = _has_windows_rfcomm_socket()
-        self.single_channel = not self._use_stdlib
-        self._service_by_address: Dict[str, WinRtServiceInfo] = {}
+        self._service_by_address: Dict[str, str] = {}
 
     def scan_blocking(self, timeout: float) -> List[DeviceInfo]:
         devices, mapping = _scan_winrt(timeout)
@@ -76,14 +70,9 @@ class _WindowsBluetoothAdapter(_BluetoothAdapter):
         return devices
 
     def create_socket(self) -> SocketLike:
-        if self._use_stdlib:
-            return socket.socket(socket.AF_BTH, socket.SOCK_STREAM, socket.BTHPROTO_RFCOMM)
         return _WinRtSocket(self)
 
     def resolve_rfcomm_channel(self, address: str) -> Optional[int]:
-        if self._use_stdlib:
-            service_info = self._service_by_address.get(address)
-            return _parse_service_channel(service_info.service_name if service_info else None)
         return RFCOMM_CHANNELS[0]
 
     async def _resolve_service_async(self, address: str, timeout: float = 5.0):
@@ -95,7 +84,7 @@ class _WindowsBluetoothAdapter(_BluetoothAdapter):
         if not service_id:
             return None
         _, _, RfcommDeviceService, _, _, _ = _winrt_imports()
-        return await RfcommDeviceService.from_id_async(service_id.service_id)
+        return await RfcommDeviceService.from_id_async(service_id)
 
 
 _ADAPTER: Optional[_BluetoothAdapter] = None
@@ -107,7 +96,7 @@ def _get_adapter() -> _BluetoothAdapter:
         if IS_WINDOWS:
             _ADAPTER = _WindowsBluetoothAdapter()
         else:
-            _ADAPTER = _LinuxBluetoothAdapter()
+            _ADAPTER = _BlueZAdapter()
     return _ADAPTER
 
 
@@ -265,19 +254,6 @@ def _send_all(sock: SocketLike, data: bytes) -> None:
         offset += sent
 
 
-def _has_windows_rfcomm_socket() -> bool:
-    return hasattr(socket, "AF_BTH") and hasattr(socket, "BTHPROTO_RFCOMM")
-
-
-def _parse_service_channel(service_name: Optional[str]) -> Optional[int]:
-    if not service_name:
-        return None
-    try:
-        return int(service_name)
-    except ValueError:
-        return None
-
-
 def _scan_bluetoothctl(timeout: float) -> List[DeviceInfo]:
     if not shutil.which("bluetoothctl"):
         return []
@@ -374,7 +350,7 @@ def _format_bt_address(value: int) -> str:
     return ":".join(text[i : i + 2] for i in range(0, 12, 2))
 
 
-async def _scan_winrt_async(timeout: float) -> WinRtScanResult:
+async def _scan_winrt_async(timeout: float) -> ScanResult:
     DeviceInformation, DeviceInformationKind, RfcommDeviceService, RfcommServiceId, _, _ = _winrt_imports()
     selector = str(RfcommDeviceService.get_device_selector(RfcommServiceId.from_uuid(SPP_UUID)))
 
@@ -391,7 +367,7 @@ async def _scan_winrt_async(timeout: float) -> WinRtScanResult:
     else:
         infos = await find_all()
     devices: List[DeviceInfo] = []
-    mapping: Dict[str, WinRtServiceInfo] = {}
+    mapping: Dict[str, str] = {}
     for info in infos:
         service = await RfcommDeviceService.from_id_async(info.id)
         if not service:
@@ -402,15 +378,12 @@ async def _scan_winrt_async(timeout: float) -> WinRtScanResult:
         if not address:
             address = info.id
         if address not in mapping:
-            mapping[address] = WinRtServiceInfo(
-                service_id=info.id,
-                service_name=getattr(service, "connection_service_name", None),
-            )
+            mapping[address] = info.id
         devices.append(DeviceInfo(name=name, address=address))
     return _dedupe_devices(devices), mapping
 
 
-def _scan_winrt(timeout: float) -> WinRtScanResult:
+def _scan_winrt(timeout: float) -> ScanResult:
     return _run_winrt(_scan_winrt_async(timeout))
 
 
