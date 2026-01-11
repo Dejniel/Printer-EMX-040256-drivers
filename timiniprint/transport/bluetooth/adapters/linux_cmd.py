@@ -17,11 +17,11 @@ class LinuxCommandTools:
         if devices_output is None:
             return [], None
         paired_output = self._run_bluetoothctl(["devices", "Paired"]) or ""
-        paired_addresses = {
-            line.split(" ", 2)[1]
-            for line in paired_output.splitlines()
-            if line.strip().startswith("Device ") and len(line.split(" ", 2)) > 1
-        }
+        paired_addresses = self._parse_paired_addresses(paired_output)
+        if not paired_addresses:
+            paired_output = self._run_bluetoothctl(["paired-devices"]) or ""
+            paired_addresses = self._parse_paired_addresses(paired_output)
+        derived_paired = set() if not paired_addresses else None
         devices = []
         for line in devices_output.splitlines():
             line = line.strip()
@@ -31,10 +31,20 @@ class LinuxCommandTools:
             if len(parts) < 2:
                 continue
             address = parts[1]
+            normalized = self._normalize_address(address)
             name = parts[2] if len(parts) > 2 else ""
-            paired = address in paired_addresses
+            if paired_addresses:
+                paired = normalized in paired_addresses
+            else:
+                paired = self._bluetoothctl_is_paired(normalized)
+                if paired and derived_paired is not None:
+                    derived_paired.add(normalized)
             devices.append(DeviceInfo(name=name, address=address, paired=paired))
-        return DeviceInfo.dedupe(devices), paired_addresses
+        if paired_addresses:
+            return DeviceInfo.dedupe(devices), paired_addresses
+        if derived_paired:
+            return DeviceInfo.dedupe(devices), derived_paired
+        return DeviceInfo.dedupe(devices), None
 
     def resolve_rfcomm_channel(self, address: str) -> Optional[int]:
         if not shutil.which("sdptool"):
@@ -103,6 +113,21 @@ class LinuxCommandTools:
         except Exception:
             return None
         return result.stdout or ""
+
+    @staticmethod
+    def _normalize_address(address: str) -> str:
+        return address.strip().replace("-", ":").upper()
+
+    def _parse_paired_addresses(self, output: str) -> Set[str]:
+        addresses: Set[str] = set()
+        for raw in output.splitlines():
+            line = raw.strip()
+            if not line.startswith("Device "):
+                continue
+            parts = line.split(" ", 2)
+            if len(parts) > 1:
+                addresses.add(self._normalize_address(parts[1]))
+        return addresses
 
     def _bluetoothctl_is_paired(self, address: str) -> bool:
         output = self._run_bluetoothctl(["info", address], timeout=5)

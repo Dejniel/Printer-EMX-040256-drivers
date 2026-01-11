@@ -115,7 +115,7 @@ def scan_inquiry(timeout: float) -> List[DeviceInfo]:
                 name = raw_name.rstrip("\x00") if isinstance(raw_name, str) else str(raw_name)
                 addr_bytes = int(info.Address.ullLong).to_bytes(8, "little")[:6]
                 address = ":".join(f"{b:02X}" for b in addr_bytes[::-1])
-                paired = bool(info.fAuthenticated)
+                paired = bool(info.fAuthenticated or info.fRemembered)
                 if address not in seen:
                     seen[address] = DeviceInfo(name=name, address=address, paired=paired)
                 if not bt.BluetoothFindNextDevice(h_find, ctypes.byref(info)):

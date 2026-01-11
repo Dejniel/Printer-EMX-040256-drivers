@@ -8,7 +8,7 @@ from tkinter import filedialog, ttk
 
 from .diagnostics import emit_startup_warnings
 from ..devices import DeviceResolver, PrinterModelRegistry
-from ..transport.bluetooth import SppBackend
+from ..transport.bluetooth import DeviceInfo, SppBackend
 
 
 class BleLoop:
@@ -122,7 +122,10 @@ class TiMiniPrintGUI(tk.Tk):
                 else:
                     self.device_var.set("")
             elif action == "connected":
-                self._set_connected_state(True, payload)
+                device = payload
+                if device:
+                    device = self._mark_device_paired(device)
+                self._set_connected_state(True, device)
             elif action == "disconnected":
                 self._set_connected_state(False)
             elif action == "error":
@@ -137,6 +140,27 @@ class TiMiniPrintGUI(tk.Tk):
         if name:
             return f"{name} ({device.address}){status}"
         return f"{device.address}{status}"
+
+    def _mark_device_paired(self, device: DeviceInfo) -> DeviceInfo:
+        updated_devices = []
+        updated = DeviceInfo(name=device.name or "", address=device.address, paired=True)
+        found = False
+        for item in self.devices:
+            if item.address == device.address:
+                name = item.name or updated.name
+                updated = DeviceInfo(name=name, address=item.address, paired=True)
+                updated_devices.append(updated)
+                found = True
+            else:
+                updated_devices.append(item)
+        if not found:
+            updated_devices.append(updated)
+        self.devices = updated_devices
+        self.device_map = {self._device_label(d): d for d in updated_devices}
+        values = list(self.device_map.keys())
+        self.device_combo["values"] = values
+        self.device_var.set(self._device_label(updated))
+        return updated
 
     def _queue_status(self, message: str) -> None:
         self.queue.put(("status", message))
@@ -172,7 +196,6 @@ class TiMiniPrintGUI(tk.Tk):
                 fut.result()
                 self._queue_status("Connected")
                 self.queue.put(("connected", device))
-                self.device_var.set(self._device_label(device))
             except Exception as exc:
                 self._queue_error(str(exc))
                 self.queue.put(("connecting", False))

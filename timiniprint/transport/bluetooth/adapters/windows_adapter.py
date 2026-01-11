@@ -20,8 +20,10 @@ class _WindowsBluetoothAdapter(_BluetoothAdapter):
         bleak_devices = self._scan_bleak(timeout)
         devices = DeviceInfo.dedupe(devices + bleak_devices)
         try:
-            _, mapping = _scan_winrt(timeout)
+            winrt_devices, mapping = _scan_winrt(timeout)
             self._service_by_address = mapping
+            if winrt_devices:
+                devices = DeviceInfo.dedupe(devices + winrt_devices)
         except Exception:
             pass
         return devices
