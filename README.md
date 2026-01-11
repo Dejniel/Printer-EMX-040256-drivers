@@ -1,8 +1,8 @@
 # TiMini Print Bluetooth Printer Tool
 
-An alternative desktop software for “[Tiny Print](https://play.google.com/store/apps/details?id=com.frogtosea.tinyPrint)”-compatible Bluetooth thermal printers, often sold under names like "thermal-printer", "ESC/POS", "pos-printer", "mini printer", "cat printer", or "rabbit printer".
-It lets you print images, PDFs, or plain text from your computer
-Supports GUI mode and a CLI "fire-and-forget" mode. Check the list of [supported Bluetooth printer models](#supported-printer-models)
+Alternative desktop software for Chinese Bluetooth thermal printers that use proprietary protocols (not ESC/POS), replacing apps like “Tiny Print” or “iBleem”. These printers are often sold under generic names such as “thermal printer”, “POS printer”, “mini printer”, or “cat printer”.
+It lets you print images, PDFs, or plain text from your computer.
+Supports both a GUI and a “fire-and-forget” CLI mode. Check the list of [supported Bluetooth printer models](#supported-printer-models).
 
 ![TiMini Print LOGO EMX-040256 Printer Psi Patrol](EMX_040256.jpg)
 
