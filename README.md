@@ -29,6 +29,9 @@ Supports both a GUI and a “fire-and-forget” CLI mode. Check the list of [sup
 - Print via a serial port (skip Bluetooth connection):
   python3 timiniprint.py --serial /dev/rfcomm0 --model A200 /path/to/file.pdf
 
+- Print raw text without creating a file:
+  python3 timiniprint.py --text "Hello from CLI"
+
 - List available printer models:
   python3 timiniprint.py --list-models
 
@@ -40,6 +43,7 @@ Supports both a GUI and a “fire-and-forget” CLI mode. Check the list of [sup
 - If `--bluetooth` is omitted, the first supported printer found is used
 - For `--serial`, you must pass `--model` (see `--list-models`)
 - For Bluetooth printing, you can pass `--model` to override auto-detection
+- `--force-text-mode` / `--force-image-mode` force the printer protocol mode
 
 ## Supported formats
 - Images: .png .jpg .jpeg .gif .bmp

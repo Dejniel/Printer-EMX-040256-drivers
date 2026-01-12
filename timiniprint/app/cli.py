@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
+import tempfile
 from typing import Optional
 
 from ..devices import DeviceResolver, PrinterModel, PrinterModelRegistry
@@ -21,10 +23,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", help="Printer model number (required for --serial)")
     parser.add_argument("--scan", action="store_true", help="List nearby supported printers and exit")
     parser.add_argument("--list-models", action="store_true", help="List known printer models and exit")
+    parser.add_argument("--text", metavar="TEXT", help="Print raw text instead of a file path")
     parser.add_argument("--darkness", type=int, choices=range(1, 6), help="Print darkness (1-5)")
     mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument("--text-mode", action="store_true", help="Force text mode printing")
-    mode_group.add_argument("--image-mode", action="store_true", help="Force image mode printing")
+    mode_group.add_argument("--force-text-mode", action="store_true", help="Force printer protocol text mode")
+    mode_group.add_argument("--force-image-mode", action="store_true", help="Force printer protocol image mode")
     parser.epilog = "If any CLI options/arguments are provided, the GUI will not be launched."
     return parser.parse_args()
 
@@ -64,9 +67,10 @@ def launch_gui() -> int:
 
 def build_print_data(
     model: PrinterModel,
-    path: str,
+    path: Optional[str],
     text_mode: Optional[bool] = None,
     blackening: Optional[int] = None,
+    text_input: Optional[str] = None,
 ) -> bytes:
     from ..printing import PrintJobBuilder, PrintSettings
 
@@ -74,19 +78,37 @@ def build_print_data(
     if blackening is not None:
         settings.blackening = blackening
     builder = PrintJobBuilder(model, settings)
-    return builder.build_from_file(path)
+    if text_input is None:
+        if not path:
+            raise RuntimeError("Missing file path")
+        return builder.build_from_file(path)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", encoding="utf-8", delete=False) as handle:
+            handle.write(text_input)
+            temp_path = handle.name
+        return builder.build_from_file(temp_path)
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 def _resolve_text_mode(args: argparse.Namespace) -> Optional[bool]:
-    if args.text_mode:
+    if args.force_text_mode:
         return True
-    if args.image_mode:
+    if args.force_image_mode:
         return False
     return None
 
 
 def _resolve_blackening(args: argparse.Namespace) -> Optional[int]:
     return args.darkness
+
+
+def _resolve_text_input(args: argparse.Namespace) -> Optional[str]:
+    if args.text is None:
+        return None
+    return args.text
 
 
 def print_bluetooth(args: argparse.Namespace) -> int:
@@ -96,7 +118,13 @@ def print_bluetooth(args: argparse.Namespace) -> int:
     async def run() -> None:
         device = await resolver.resolve_printer_device(args.bluetooth)
         model = resolver.resolve_model(device.name or "", args.model)
-        data = build_print_data(model, args.path, _resolve_text_mode(args), _resolve_blackening(args))
+        data = build_print_data(
+            model,
+            args.path,
+            _resolve_text_mode(args),
+            _resolve_blackening(args),
+            _resolve_text_input(args),
+        )
         backend = SppBackend()
         await backend.connect(device.address)
         await backend.write(data, model.img_mtu or 180, model.interval_ms or 4)
@@ -110,7 +138,13 @@ def print_serial(args: argparse.Namespace) -> int:
     registry = PrinterModelRegistry.load()
     resolver = DeviceResolver(registry)
     model = resolver.require_model(args.model)
-    data = build_print_data(model, args.path, _resolve_text_mode(args), _resolve_blackening(args))
+    data = build_print_data(
+        model,
+        args.path,
+        _resolve_text_mode(args),
+        _resolve_blackening(args),
+        _resolve_text_input(args),
+    )
 
     async def run() -> None:
         transport = SerialTransport(args.serial)
@@ -129,8 +163,11 @@ def main() -> int:
         return list_models()
     if args.scan:
         return scan_devices()
-    if not args.path:
-        print("Missing file path. Use --help for usage.", file=sys.stderr)
+    if args.path and args.text is not None:
+        print("Provide either a file path or --text, not both. Use --help for usage.", file=sys.stderr)
+        return 2
+    if not args.path and args.text is None:
+        print("Missing file path or --text. Use --help for usage.", file=sys.stderr)
         return 2
     try:
         if args.serial:
