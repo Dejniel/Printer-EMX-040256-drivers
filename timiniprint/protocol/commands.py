@@ -57,13 +57,25 @@ def feed_paper_cmd(speed: int, new_format: bool) -> bytes:
     return make_packet(0xBD, payload, new_format)
 
 
+def _paper_payload(dpi: int) -> bytes:
+    if dpi == 300:
+        return bytes([0x48, 0x00])
+    return bytes([0x30, 0x00])
+
+
 def paper_cmd(dpi: int, new_format: bool) -> bytes:
     """Build the paper size/DPI command packet."""
-    if dpi == 300:
-        payload = bytes([0x48, 0x00])
-    else:
-        payload = bytes([0x30, 0x00])
-    return make_packet(0xA1, payload, new_format)
+    return make_packet(0xA1, _paper_payload(dpi), new_format)
+
+
+def advance_paper_cmd(dpi: int, new_format: bool) -> bytes:
+    """Build the manual feed command (matches iPrintUtility)."""
+    return make_packet(0xA1, _paper_payload(dpi), new_format)
+
+
+def retract_paper_cmd(dpi: int, new_format: bool) -> bytes:
+    """Build the manual retract command (matches iPrintUtility)."""
+    return make_packet(0xA0, _paper_payload(dpi), new_format)
 
 
 def dev_state_cmd(new_format: bool) -> bytes:

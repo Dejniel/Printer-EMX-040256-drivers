@@ -11,6 +11,8 @@ from .diagnostics import emit_startup_warnings
 from ..devices import DeviceResolver, PrinterModelRegistry
 from ..transport.bluetooth import DeviceInfo, SppBackend
 
+PAPER_MOTION_INTERVAL_MS = 1000
+
 
 class BleLoop:
     def __init__(self) -> None:
@@ -54,6 +56,9 @@ class TiMiniPrintGUI(tk.Tk):
         self.status_var = tk.StringVar(value="Idle")
         self.connected_model = None
         self._connecting = False
+        self._paper_motion_action = None
+        self._paper_motion_job = None
+        self._paper_motion_busy = False
         self.file_var.trace_add("write", self._on_file_path_change)
 
         self._build_ui()
@@ -126,7 +131,17 @@ class TiMiniPrintGUI(tk.Tk):
         action_frame = ttk.Frame(self)
         action_frame.pack(fill="x", padx=10, pady=10)
         self.print_button = ttk.Button(action_frame, text="Print", command=self.print_file)
+        self.retract_button = ttk.Button(action_frame, text="Retract")
+        self.feed_button = ttk.Button(action_frame, text="Feed")
+        self.feed_button.pack(side="left")
+        self.retract_button.pack(side="left", padx=(6, 0))
         self.print_button.pack(side="right")
+        self.feed_button.bind("<ButtonPress-1>", lambda event: self._start_paper_motion("feed"))
+        self.feed_button.bind("<ButtonRelease-1>", self._stop_paper_motion)
+        self.feed_button.bind("<Leave>", self._stop_paper_motion)
+        self.retract_button.bind("<ButtonPress-1>", lambda event: self._start_paper_motion("retract"))
+        self.retract_button.bind("<ButtonRelease-1>", self._stop_paper_motion)
+        self.retract_button.bind("<Leave>", self._stop_paper_motion)
 
         status_frame = ttk.Frame(self)
         status_frame.pack(fill="x", padx=10, pady=10)
@@ -308,6 +323,69 @@ class TiMiniPrintGUI(tk.Tk):
         self._queue_status("Printing...")
         self.ble_loop.submit(run(), callback=done)
 
+    def _start_paper_motion(self, action: str) -> None:
+        if action not in {"feed", "retract"}:
+            return
+        self._stop_paper_motion()
+        self._paper_motion_action = action
+        self._send_paper_motion(action)
+        self._schedule_paper_motion()
+
+    def _schedule_paper_motion(self) -> None:
+        if not self._paper_motion_action:
+            return
+        self._paper_motion_job = self.after(PAPER_MOTION_INTERVAL_MS, self._paper_motion_tick)
+
+    def _paper_motion_tick(self) -> None:
+        if not self._paper_motion_action:
+            return
+        self._send_paper_motion(self._paper_motion_action)
+        self._schedule_paper_motion()
+
+    def _stop_paper_motion(self, *_args) -> None:
+        self._paper_motion_action = None
+        if self._paper_motion_job is not None:
+            self.after_cancel(self._paper_motion_job)
+            self._paper_motion_job = None
+
+    def _send_paper_motion(self, action: str) -> None:
+        if self._paper_motion_busy:
+            return
+        label = self.device_var.get()
+        device = self.device_map.get(label)
+        if not device:
+            self._queue_error("Select a Bluetooth device")
+            self._stop_paper_motion()
+            return
+        model = self.connected_model
+        if not model:
+            self._queue_error("Printer model not detected")
+            self._stop_paper_motion()
+            return
+
+        from ..protocol import advance_paper_cmd, retract_paper_cmd
+
+        if action == "feed":
+            data = advance_paper_cmd(model.dev_dpi, model.new_format)
+        else:
+            data = retract_paper_cmd(model.dev_dpi, model.new_format)
+        self._paper_motion_busy = True
+
+        async def run() -> None:
+            if not self.backend.is_connected():
+                await self.backend.connect(device.address)
+            await self.backend.write(data, model.img_mtu or 180, model.interval_ms or 4)
+
+        def done(fut):
+            self._paper_motion_busy = False
+            try:
+                fut.result()
+            except Exception as exc:
+                self._queue_error(str(exc))
+                self._stop_paper_motion()
+
+        self.ble_loop.submit(run(), callback=done)
+
     def _set_connected_state(self, connected: bool, device=None) -> None:
         self._connecting = False
         self.connected_model = None
@@ -328,6 +406,8 @@ class TiMiniPrintGUI(tk.Tk):
             self._set_widget_state(self.text_mode_check, True)
             self._set_widget_state(self.darkness_scale, True)
             self._set_widget_state(self.darkness_value_label, True)
+            self._set_widget_state(self.feed_button, True)
+            self._set_widget_state(self.retract_button, True)
             self._set_widget_state(self.print_button, True)
             self._set_widget_state(self.connect_button, False)
             self._set_widget_state(self.disconnect_button, True)
@@ -341,9 +421,12 @@ class TiMiniPrintGUI(tk.Tk):
         self._set_widget_state(self.text_mode_check, False)
         self._set_widget_state(self.darkness_scale, False)
         self._set_widget_state(self.darkness_value_label, False)
+        self._set_widget_state(self.feed_button, False)
+        self._set_widget_state(self.retract_button, False)
         self._set_widget_state(self.print_button, False)
         self._set_widget_state(self.connect_button, True)
         self._set_widget_state(self.disconnect_button, False)
+        self._stop_paper_motion()
 
     def _set_connecting_state(self, connecting: bool) -> None:
         self._connecting = connecting
