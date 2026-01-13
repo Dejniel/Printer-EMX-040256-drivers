@@ -40,7 +40,7 @@ class PrinterModel:
 
     @property
     def width(self) -> int:
-        return self.paper_size
+        return self.print_size
 
 
 class PrinterModelRegistry:

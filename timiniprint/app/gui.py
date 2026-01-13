@@ -9,6 +9,7 @@ from tkinter import filedialog, ttk
 
 from .diagnostics import emit_startup_warnings
 from ..devices import DeviceResolver, PrinterModelRegistry
+from ..rendering.converters.text import TextConverter
 from ..transport.bluetooth import DeviceInfo, SppBackend
 
 PAPER_MOTION_INTERVAL_MS = 1000
@@ -53,6 +54,8 @@ class TiMiniPrintGUI(tk.Tk):
         self.file_var = tk.StringVar()
         self.text_mode_var = tk.BooleanVar(value=False)
         self.darkness_var = tk.IntVar(value=3)
+        self.text_font_var = tk.StringVar()
+        self.text_columns_var = tk.IntVar(value=35)
         self.status_var = tk.StringVar(value="Idle")
         self.connected_model = None
         self._connecting = False
@@ -108,7 +111,7 @@ class TiMiniPrintGUI(tk.Tk):
         options_frame.pack(fill="x", padx=10, pady=10)
         self.text_mode_check = ttk.Checkbutton(
             options_frame,
-            text="Text mode",
+            text="Firmware text mode",
             variable=self.text_mode_var,
         )
         self.text_mode_check.grid(row=0, column=0, sticky="w", **padding)
@@ -127,6 +130,31 @@ class TiMiniPrintGUI(tk.Tk):
         self.darkness_value_label = ttk.Label(options_frame, textvariable=self.darkness_var, width=2)
         self.darkness_value_label.grid(row=0, column=3, sticky="w", **padding)
         options_frame.columnconfigure(4, weight=1)
+
+        text_frame = ttk.LabelFrame(self, text="Txt Options")
+        text_frame.pack(fill="x", padx=10, pady=10)
+        text_frame.columnconfigure(1, weight=1)
+        ttk.Label(text_frame, text="Font:").grid(row=0, column=0, sticky="w", **padding)
+        self.text_font_entry = ttk.Entry(text_frame, textvariable=self.text_font_var, width=48)
+        self.text_font_entry.grid(row=0, column=1, sticky="ew", **padding)
+        self.text_font_browse = ttk.Button(text_frame, text="Browse", command=self.browse_text_font)
+        self.text_font_browse.grid(row=0, column=2, **padding)
+        self.text_font_clear = ttk.Button(text_frame, text="Default", command=self.clear_text_font)
+        self.text_font_clear.grid(row=0, column=3, **padding)
+        ttk.Label(text_frame, text="Letters per line:").grid(row=1, column=0, sticky="w", **padding)
+        self.text_columns_scale = tk.Scale(
+            text_frame,
+            from_=30,
+            to=40,
+            orient="horizontal",
+            resolution=1,
+            showvalue=False,
+            length=160,
+            variable=self.text_columns_var,
+        )
+        self.text_columns_scale.grid(row=1, column=1, sticky="w", **padding)
+        self.text_columns_value_label = ttk.Label(text_frame, textvariable=self.text_columns_var, width=4)
+        self.text_columns_value_label.grid(row=1, column=2, sticky="w", **padding)
 
         action_frame = ttk.Frame(self)
         action_frame.pack(fill="x", padx=10, pady=10)
@@ -274,6 +302,20 @@ class TiMiniPrintGUI(tk.Tk):
         if path:
             self.file_var.set(path)
 
+    def browse_text_font(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Select font",
+            filetypes=[
+                ("Fonts", "*.ttf *.otf *.ttc"),
+                ("All files", "*.*"),
+            ],
+        )
+        if path:
+            self.text_font_var.set(path)
+
+    def clear_text_font(self) -> None:
+        self.text_font_var.set("")
+
     def _on_file_path_change(self, *_args) -> None:
         self._set_text_mode_for_path(self.file_var.get())
 
@@ -304,6 +346,8 @@ class TiMiniPrintGUI(tk.Tk):
         settings = PrintSettings(
             text_mode=self.text_mode_var.get(),
             blackening=self.darkness_var.get(),
+            text_font=self.text_font_var.get().strip() or None,
+            text_columns=self.text_columns_var.get(),
         )
         builder = PrintJobBuilder(model, settings)
 
@@ -406,11 +450,17 @@ class TiMiniPrintGUI(tk.Tk):
             self._set_widget_state(self.text_mode_check, True)
             self._set_widget_state(self.darkness_scale, True)
             self._set_widget_state(self.darkness_value_label, True)
+            self._set_widget_state(self.text_font_entry, True)
+            self._set_widget_state(self.text_font_browse, True)
+            self._set_widget_state(self.text_font_clear, True)
+            self._set_widget_state(self.text_columns_scale, True)
+            self._set_widget_state(self.text_columns_value_label, True)
             self._set_widget_state(self.feed_button, True)
             self._set_widget_state(self.retract_button, True)
             self._set_widget_state(self.print_button, True)
             self._set_widget_state(self.connect_button, False)
             self._set_widget_state(self.disconnect_button, True)
+            self._configure_text_columns(model)
             return
 
         self.model_var.set("")
@@ -421,12 +471,31 @@ class TiMiniPrintGUI(tk.Tk):
         self._set_widget_state(self.text_mode_check, False)
         self._set_widget_state(self.darkness_scale, False)
         self._set_widget_state(self.darkness_value_label, False)
+        self._set_widget_state(self.text_font_entry, False)
+        self._set_widget_state(self.text_font_browse, False)
+        self._set_widget_state(self.text_font_clear, False)
+        self._set_widget_state(self.text_columns_scale, False)
+        self._set_widget_state(self.text_columns_value_label, False)
         self._set_widget_state(self.feed_button, False)
         self._set_widget_state(self.retract_button, False)
         self._set_widget_state(self.print_button, False)
         self._set_widget_state(self.connect_button, True)
         self._set_widget_state(self.disconnect_button, False)
         self._stop_paper_motion()
+
+    def _configure_text_columns(self, model) -> None:
+        width = self._normalized_width(model.width)
+        default_columns = TextConverter.default_columns_for_width(width)
+        min_columns = max(5, int(round(default_columns * 0.5)))
+        max_columns = max(min_columns + 1, int(round(default_columns * 1.5)))
+        self.text_columns_scale.configure(from_=min_columns, to=max_columns)
+        self.text_columns_var.set(default_columns)
+
+    @staticmethod
+    def _normalized_width(width: int) -> int:
+        if width % 8 == 0:
+            return width
+        return width - (width % 8)
 
     def _set_connecting_state(self, connecting: bool) -> None:
         self._connecting = connecting

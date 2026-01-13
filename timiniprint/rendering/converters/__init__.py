@@ -12,14 +12,19 @@ SUPPORTED_EXTENSIONS: Set[str] = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".pdf
 
 
 class PageLoader:
-    def __init__(self, converters: Optional[Dict[str, PageConverter]] = None) -> None:
+    def __init__(
+        self,
+        converters: Optional[Dict[str, PageConverter]] = None,
+        text_font: Optional[str] = None,
+        text_columns: Optional[int] = None,
+    ) -> None:
         if converters is None:
             converters = {}
             image_converter = ImageConverter()
             for ext in (".png", ".jpg", ".jpeg", ".gif", ".bmp"):
                 converters[ext] = image_converter
             converters[".pdf"] = PdfConverter()
-            converters[".txt"] = TextConverter()
+            converters[".txt"] = TextConverter(font_path=text_font, columns=text_columns)
         self._converters = converters
 
     @property

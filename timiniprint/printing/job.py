@@ -21,6 +21,8 @@ class PrintSettings:
     dither: bool = True
     lsb_first: Optional[bool] = None
     text_mode: Optional[bool] = None
+    text_font: Optional[str] = None
+    text_columns: Optional[int] = None
     blackening: int = DEFAULT_BLACKENING
     feed_padding: int = DEFAULT_FEED_PADDING
 
@@ -34,7 +36,10 @@ class PrintJobBuilder:
     ) -> None:
         self.model = model
         self.settings = settings or PrintSettings()
-        self.page_loader = page_loader or PageLoader()
+        self.page_loader = page_loader or PageLoader(
+            text_font=self.settings.text_font,
+            text_columns=self.settings.text_columns,
+        )
 
     def build_from_file(self, path: str) -> bytes:
         self._validate_input_path(path)

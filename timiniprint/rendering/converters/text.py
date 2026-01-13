@@ -7,8 +7,15 @@ from PIL import Image, ImageDraw, ImageFont
 from .base import Page, PageConverter
 from ..fonts import find_monospace_bold_font, load_font
 
+COLUMNS_PER_WIDTH = 35 / 384
+REFERENCE_PATTERN = "M.I"
+
 
 class TextConverter(PageConverter):
+    def __init__(self, font_path: Optional[str] = None, columns: Optional[int] = None) -> None:
+        self._font_path = font_path
+        self._columns_override = columns
+
     def load(self, path: str, width: int) -> List[Page]:
         with open(path, "r", encoding="utf-8", errors="replace") as handle:
             text = handle.read()
@@ -17,13 +24,14 @@ class TextConverter(PageConverter):
         return [Page(img, dither=False, is_text=True)]
 
     def _render_text_image(self, text: str, width: int) -> Image.Image:
-        font_path = find_monospace_bold_font()
+        font_path = self._font_path or find_monospace_bold_font()
         columns = self._columns_for_width(width)
-        font = self._fit_truetype_font(font_path, width, columns)
-        lines = self._wrap_text_lines(text, columns)
+        reference_text = self._reference_text(columns)
+        font = self._fit_truetype_font(font_path, width, reference_text)
+        lines = self._wrap_text_lines(text, width, font)
         line_height = self._font_line_height(font)
         height = max(1, line_height * len(lines))
-        img = Image.new("L", (width, height), 255)
+        img = Image.new("1", (width, height), 1)
         draw = ImageDraw.Draw(img)
         y = 0
         for line in lines:
@@ -32,19 +40,28 @@ class TextConverter(PageConverter):
         return img
 
     @staticmethod
-    def _columns_for_width(width: int) -> int:
-        base_width = 384
-        base_columns = 35
-        return max(1, int(round(width * base_columns / base_width)))
+    def default_columns_for_width(width: int) -> int:
+        return max(1, int(round(width * COLUMNS_PER_WIDTH)))
+
+    def _columns_for_width(self, width: int) -> int:
+        if self._columns_override is not None:
+            return max(1, int(self._columns_override))
+        return self.default_columns_for_width(width)
+
+    def _reference_text(self, columns: int) -> str:
+        if columns <= 0:
+            return REFERENCE_PATTERN
+        repeats = (columns // len(REFERENCE_PATTERN)) + 1
+        return (REFERENCE_PATTERN * repeats)[:columns]
 
     @staticmethod
-    def _fit_truetype_font(path: Optional[str], width: int, columns: int) -> ImageFont.FreeTypeFont:
+    def _fit_truetype_font(path: Optional[str], width: int, reference_text: str) -> ImageFont.FreeTypeFont:
         if not path:
             return ImageFont.load_default()
         low = 6
         high = 80
         best = None
-        sample = "M" * max(1, columns)
+        sample = reference_text or "M"
         while low <= high:
             size = (low + high) // 2
             font = load_font(path, size)
@@ -57,8 +74,7 @@ class TextConverter(PageConverter):
             return load_font(path, 6)
         return best
 
-    @staticmethod
-    def _wrap_text_lines(text: str, columns: int) -> List[str]:
+    def _wrap_text_lines(self, text: str, width: int, font: ImageFont.FreeTypeFont) -> List[str]:
         if text == "":
             return [""]
         lines: List[str] = []
@@ -69,17 +85,58 @@ class TextConverter(PageConverter):
             if raw_line == "":
                 lines.append("")
                 continue
-            line = raw_line
-            while len(line) > columns:
-                break_at = line.rfind(" ", 0, columns + 1)
-                if break_at > 0:
-                    lines.append(line[:break_at])
-                    line = line[break_at + 1 :]
-                else:
-                    lines.append(line[:columns])
-                    line = line[columns:]
-            lines.append(line)
+            lines.extend(self._wrap_line_by_width(raw_line, width, font))
         return lines
+
+    def _wrap_line_by_width(
+        self,
+        line: str,
+        width: int,
+        font: ImageFont.FreeTypeFont,
+    ) -> List[str]:
+        if self._text_width(font, line) <= width:
+            return [line]
+        lines: List[str] = []
+        remaining = line
+        while remaining:
+            if self._text_width(font, remaining) <= width:
+                lines.append(remaining)
+                break
+            cut = self._fit_substring_length(remaining, width, font)
+            if cut <= 0:
+                lines.append(remaining[:1])
+                remaining = remaining[1:]
+                continue
+            slice_text = remaining[:cut]
+            split_at = slice_text.rfind(" ")
+            if split_at > 0:
+                lines.append(slice_text[:split_at])
+                remaining = remaining[split_at + 1 :]
+            else:
+                lines.append(slice_text)
+                remaining = remaining[cut:]
+        return lines
+
+    def _fit_substring_length(
+        self,
+        text: str,
+        width: int,
+        font: ImageFont.FreeTypeFont,
+    ) -> int:
+        low = 0
+        high = len(text)
+        best = 0
+        while low <= high:
+            mid = (low + high) // 2
+            if mid == 0:
+                low = 1
+                continue
+            if self._text_width(font, text[:mid]) <= width:
+                best = mid
+                low = mid + 1
+            else:
+                high = mid - 1
+        return best
 
     @staticmethod
     def _text_width(font: ImageFont.FreeTypeFont, text: str) -> int:

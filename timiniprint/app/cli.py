@@ -24,6 +24,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scan", action="store_true", help="List nearby supported printers and exit")
     parser.add_argument("--list-models", action="store_true", help="List known printer models and exit")
     parser.add_argument("--text", metavar="TEXT", help="Print raw text instead of a file path")
+    parser.add_argument(
+        "--text-font",
+        metavar="PATH",
+        help="Path to a .ttf/.otf font used for text rendering (default: monospace bold)",
+    )
+    parser.add_argument(
+        "--text-columns",
+        type=int,
+        metavar="N",
+        help="Target number of characters per line for text rendering",
+    )
     parser.add_argument("--darkness", type=int, choices=range(1, 6), help="Print darkness (1-5)")
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument("--force-text-mode", action="store_true", help="Force printer protocol text mode")
@@ -71,10 +82,16 @@ def build_print_data(
     text_mode: Optional[bool] = None,
     blackening: Optional[int] = None,
     text_input: Optional[str] = None,
+    text_font: Optional[str] = None,
+    text_columns: Optional[int] = None,
 ) -> bytes:
     from ..printing import PrintJobBuilder, PrintSettings
 
-    settings = PrintSettings(text_mode=text_mode)
+    settings = PrintSettings(
+        text_mode=text_mode,
+        text_font=text_font,
+        text_columns=text_columns,
+    )
     if blackening is not None:
         settings.blackening = blackening
     builder = PrintJobBuilder(model, settings)
@@ -111,6 +128,20 @@ def _resolve_text_input(args: argparse.Namespace) -> Optional[str]:
     return args.text
 
 
+def _resolve_text_font(args: argparse.Namespace) -> Optional[str]:
+    if args.text_font:
+        return args.text_font
+    return None
+
+
+def _resolve_text_columns(args: argparse.Namespace) -> Optional[int]:
+    if args.text_columns is None:
+        return None
+    if args.text_columns < 1:
+        raise ValueError("Text columns must be at least 1")
+    return args.text_columns
+
+
 def print_bluetooth(args: argparse.Namespace) -> int:
     registry = PrinterModelRegistry.load()
     resolver = DeviceResolver(registry)
@@ -124,6 +155,8 @@ def print_bluetooth(args: argparse.Namespace) -> int:
             _resolve_text_mode(args),
             _resolve_blackening(args),
             _resolve_text_input(args),
+            _resolve_text_font(args),
+            _resolve_text_columns(args),
         )
         backend = SppBackend()
         await backend.connect(device.address)
@@ -144,6 +177,8 @@ def print_serial(args: argparse.Namespace) -> int:
         _resolve_text_mode(args),
         _resolve_blackening(args),
         _resolve_text_input(args),
+        _resolve_text_font(args),
+        _resolve_text_columns(args),
     )
 
     async def run() -> None:
